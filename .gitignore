@@ -4,17 +4,13 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-*.so
-*.dylib
 
 # Virtual environment
 venv/
 .venv/
 
-# Environment (API keys) — ДЕФОЛТНЫЕ ПРОМТЫ ВКЛЮЧЁН
+# Environment
 .env
-prompts/
-*.env.local
 
 # IDE
 .vscode/
@@ -25,8 +21,6 @@ prompts/
 # OS
 .DS_Store
 Thumbs.db
-desktop.ini
 
 # Project specific
 *.tmp
-Thread_*
