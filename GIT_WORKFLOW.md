@@ -1,298 +1,244 @@
 # Git Workflow — AI Orchestrator
 
-## Содержание
+## Схема
 
-1. [Выгрузка проекта на GitHub (локальный ПК → GitHub)](#1-выгрузка-проекта-на-github)
-2. [Обновление проекта на сервере Ubuntu (GitHub → сервер)](#2-обновление-проекта-на-сервере-ubuntu)
-
----
-
-# 1. Выгрузка проекта на GitHub (локальный ПК → GitHub)
-
-## Предварительные требования
-
-- Установленный Git на локальном ПК: `git --version`
-- Аккаунт на [GitHub.com](https://github.com)
-- SSH-ключ добавлен в GitHub (или Personal Access Token)
-  - [Гайд по SSH](https://docs.github.com/en/authentication/connecting-to-github-with-ssh)
+```
+Локальный ПК (Windows/Linux)
+│  git push
+▼
+GitHub (infernogood/ZA-LoopMattermost)
+│  git pull
+▼
+Сервер Ubuntu 22.04 (/opt/ai-orchestrator/)
+```
 
 ---
 
-## Пошаговая инструкция
+## 1. Первый пуш с локального ПК на GitHub
 
-### 1.1. Создать пустой репозиторий на GitHub
-
-1. Зайти на https://github.com → **New repository**
-2. **Repository name:** `mattermost-ai-orchestrator`
-3. **Description:** `Multi-agent AI orchestrator for Mattermost with LangGraph and Z.AI`
-4. **Visibility:** `Private` (рекомендуется — содержит конфигурацию интеграций)
-5. **НЕ отмечать** "Add a README", "Add .gitignore", "Add a license" (они уже есть в проекте)
-6. Нажать **Create repository**
-
-Скопировать URL репозитория:
-- SSH: `git@github.com:ВАШ_АККАУНТ/mattermost-ai-orchestrator.git`
-- HTTPS: `https://github.com/ВАШ_АККАУНТ/mattermost-ai-orchestrator.git`
-
-### 1.2. Настроить remote в локальном репозитории
+### 1.1 Проверить текущий remote
 
 ```bash
 cd C:\Users\User\Desktop\MyProects\MattermostBots
-```
-
-Проверить текущий remote:
-
-```bash
 git remote -v
+# -> origin  https://github.com/YOUR_USERNAME/mattermost-ai-orchestrator.git (fetch)
+# -> origin  https://github.com/YOUR_USERNAME/mattermost-ai-orchestrator.git (push)
 ```
 
-Если remote указывает на placeholder — обновить:
+Remote указывает на placeholder — нужно сменить на ваш репозиторий.
+
+### 1.2 Сменить remote на ваш GitHub
 
 ```bash
-git remote set-url origin git@github.com:ВАШ_АККАУНТ/mattermost-ai-orchestrator.git
+git remote set-url origin git@github.com:infernogood/ZA-LoopMattermost.git
+git remote -v
+# -> origin  git@github.com:infernogood/ZA-LoopMattermost.git (fetch)
+# -> origin  git@github.com:infernogood/ZA-LoopMattermost.git (push)
 ```
 
-Если remote не настроен — добавить:
+### 1.3 Проверить, что SSH-ключ добавлен в GitHub
 
 ```bash
-git remote add origin git@github.com:ВАШ_АККАУНТ/mattermost-ai-orchestrator.git
+ssh -T git@github.com
+# -> Hi infernogood! You've successfully authenticated...
 ```
 
-### 1.3. Закоммитить текущие изменения
+Если нет — добавить публичный ключ: `https://github.com/settings/keys`
+
+### 1.4 Проверить .gitignore
+
+Открыть `.gitignore` — убедиться, что там есть:
+
+```
+.env
+venv/
+.venv/
+__pycache__/
+*.tmp
+```
+
+### 1.5 Просмотреть что попадёт в коммит
+
+```bash
+git status
+```
+
+Должны быть:
+- `main.py`
+- `graph.py`
+- `projects.py`
+- `requirements.txt`
+- `.env.example`
+- `.gitignore`
+- `ai-orchestrator.service`
+- `default-prompts/`
+- `README.md`
+- `GIT_WORKFLOW.md`
+
+**Не должны** попасть:
+- `.env` (секреты)
+- `venv/` (окружение)
+- `__pycache__/`
+- `*.tmp`
+
+### 1.6 Создать коммит и запушить
 
 ```bash
 git add .
+git commit -m "Deploy-ready: multi-project AI orchestrator with slash commands, per-agent LLM, file generation"
+git push -u origin main
 ```
 
-> `.env` не попадёт в коммит — он в `.gitignore`.
-> Если `.env` всё равно отображается в `git status` — проверить `.gitignore`.
+Если ветка называется `master` вместо `main`:
 
 ```bash
-git commit -m "Full project: multi-project AI orchestrator with slash commands, per-agent LLM, file generation"
+git branch -M main
+git push -u origin main
 ```
-
-### 1.4. Запушить на GitHub
-
-```bash
-git push -u origin master
-```
-
-При первом push может потребоваться:
-- **HTTPS:** окно входа в GitHub (браузер или token)
-- **SSH:** подтверждение fingerprint сервера
-
-### 1.5. Проверка
-
-```bash
-git log --oneline -3
-git remote -v
-```
-
-**Что в репозитории:**
-| Файл | Статус |
-|------|--------|
-| `main.py`, `graph.py`, `projects.py` | ✅ |
-| `requirements.txt` | ✅ |
-| `.env.example` | ✅ (шаблон, без секретов) |
-| `ai-orchestrator.service` | ✅ |
-| `default-prompts/*.md` | ✅ |
-| `README.md`, `GIT_WORKFLOW.md` | ✅ |
-| `.gitignore` | ✅ |
-| `.env` | ❌ (в .gitignore) |
-| `venv/`, `__pycache__/` | ❌ (в .gitignore) |
 
 ---
 
-# 2. Обновление проекта на сервере Ubuntu (GitHub → сервер)
+## 2. Клонирование на сервер Ubuntu 22.04 (при первом развёртывании)
 
-## Ситуация
-
-Проект уже работает на сервере: файлы в `/opt/ai-orchestrator/`, запущен через systemd.
-Вы внесли изменения в код на локальном ПК, запушили в GitHub.
-Теперь нужно обновить код на сервере.
-
----
-
-## Пошаговая инструкция
-
-### 2.1. Первый раз: клонировать репозиторий на сервер
-
-**Это нужно сделать только один раз — при первой настройке.**
+### 2.1 Установить git на сервере
 
 ```bash
-# Перейти в родительскую директорию
-cd /opt
-
-# Убедиться, что старая версия сохранена
-sudo mv ai-orchestrator ai-orchestrator-backup
-
-# Клонировать репозиторий
-sudo git clone git@github.com:ВАШ_АККАУНТ/mattermost-ai-orchestrator.git
-
-# Назначить владельца
-sudo chown -R ai-orchestrator:ai-orchestrator /opt/ai-orchestrator
+sudo apt update
+sudo apt install git -y
 ```
 
-**Настроить .env (секреты не в репозитории):**
+### 2.2 Добавить SSH-ключ сервера в GitHub
+
+На сервере:
 
 ```bash
-# Восстановить .env из бэкапа (содержит ZAI_API_KEY, MATTERMOST_BOT_TOKEN и т.д.)
-sudo cp /opt/ai-orchestrator-backup/.env /opt/ai-orchestrator/.env
-sudo chmod 600 /opt/ai-orchestrator/.env
-
-# Либо создать заново из шаблона
-sudo cp /opt/ai-orchestrator/.env.example /opt/ai-orchestrator/.env
-sudo nano /opt/ai-orchestrator/.env   # вставить секреты
+ssh-keygen -t ed25519 -C "ubuntu-server"
+cat ~/.ssh/id_ed25519.pub
 ```
 
-**Настроить виртуальное окружение:**
+Скопировать вывод. Перейти на GitHub → **Settings → SSH and GPG keys → New SSH key** → вставить ключ.
+
+### 2.3 Сделать бэкап текущей версии (если есть)
+
+```bash
+sudo cp -r /opt/ai-orchestrator /opt/ai-orchestrator.backup-$(date +%Y%m%d_%H%M%S)
+```
+
+### 2.4 Удалить старые файлы проекта (кроме .env, venv, workspace)
 
 ```bash
 cd /opt/ai-orchestrator
-sudo -u ai-orchestrator python3 -m venv venv
-sudo -u ai-orchestrator ./venv/bin/pip install --no-cache-dir -r requirements.txt
+sudo rm -f main.py graph.py projects.py requirements.txt .env.example
+sudo rm -rf default-prompts/
 ```
 
-**Настроить default-prompts:**
+### 2.5 Клонировать репозиторий во временную папку
 
 ```bash
-# Скопировать дефолтные промты (если папка новая)
-sudo mkdir -p /opt/ai-orchestrator/default-prompts
-sudo cp -r /opt/ai-orchestrator/default-prompts/* /opt/ai-orchestrator/default-prompts/
-sudo chown -R ai-orchestrator:ai-orchestrator /opt/ai-orchestrator/default-prompts/
+git clone git@github.com:infernogood/ZA-LoopMattermost.git /tmp/za-loop-mattermost
 ```
 
-**Настроить и запустить systemd:**
+### 2.6 Скопировать новые файлы на место
 
 ```bash
-sudo cp /opt/ai-orchestrator/ai-orchestrator.service /etc/systemd/system/
+sudo cp /tmp/za-loop-mattermost/main.py /opt/ai-orchestrator/
+sudo cp /tmp/za-loop-mattermost/graph.py /opt/ai-orchestrator/
+sudo cp /tmp/za-loop-mattermost/projects.py /opt/ai-orchestrator/
+sudo cp /tmp/za-loop-mattermost/requirements.txt /opt/ai-orchestrator/
+sudo cp /tmp/za-loop-mattermost/.env.example /opt/ai-orchestrator/
+sudo cp /tmp/za-loop-mattermost/ai-orchestrator.service /opt/ai-orchestrator/
+sudo cp /tmp/za-loop-mattermost/README.md /opt/ai-orchestrator/
+sudo cp -r /tmp/za-loop-mattermost/default-prompts /opt/ai-orchestrator/
+```
+
+### 2.7 Удалить временную папку
+
+```bash
+rm -rf /tmp/za-loop-mattermost
+```
+
+### 2.8 Обновить зависимости (если изменились)
+
+```bash
+cd /opt/ai-orchestrator
+sudo ./venv/bin/pip install --no-cache-dir -r requirements.txt
+```
+
+### 2.9 Перезапустить сервис
+
+```bash
 sudo systemctl daemon-reload
-sudo systemctl enable ai-orchestrator
-sudo systemctl start ai-orchestrator
+sudo systemctl restart ai-orchestrator
 sudo systemctl status ai-orchestrator
 ```
 
 ---
 
-### 2.2. Обычное обновление (pull изменений)
-
-Выполнять каждый раз, когда нужно обновить код на сервере.
-
-**Шаг 1 — Подключиться к серверу**
+## 3. Обновление с GitHub на сервер (последующие разы)
 
 ```bash
-ssh user@your-server-ip
-```
+# 1. Склонировать свежую версию
+git clone git@github.com:infernogood/ZA-LoopMattermost.git /tmp/za-update
 
-**Шаг 2 — Остановить сервис**
-
-```bash
-sudo systemctl stop ai-orchestrator
-```
-
-**Шаг 3 — Скачать изменения из GitHub**
-
-```bash
+# 2. Наложить файлы (только те, что изменились)
 cd /opt/ai-orchestrator
-sudo -u ai-orchestrator git pull origin master
-```
+sudo cp /tmp/za-update/main.py .
+sudo cp /tmp/za-update/graph.py .
+sudo cp /tmp/za-update/projects.py .
+sudo cp /tmp/za-update/requirements.txt .
+sudo cp -r /tmp/za-update/default-prompts .
 
-Если возникли конфликты:
+# 3. Очистка
+rm -rf /tmp/za-update
 
-```bash
-# Посмотреть конфликтные файлы
-git status
+# 4. Зависимости (если изменились)
+sudo ./venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Отменить локальные изменения (если они не нужны)
-git checkout --their <file>
-
-# Или отложить локальные изменения
-git stash
-git pull
-git stash pop
-```
-
-**Шаг 4 — Обновить зависимости (если requirements.txt изменился)**
-
-```bash
-sudo -u ai-orchestrator ./venv/bin/pip install --no-cache-dir -r requirements.txt
-```
-
-**Шаг 5 — Обновить default-prompts (если папка изменилась)**
-
-```bash
-sudo cp -r /opt/ai-orchestrator/default-prompts/* /opt/ai-orchestrator/default-prompts/
-```
-
-**Шаг 6 — Обновить systemd-юнит (если service файл изменился)**
-
-```bash
-sudo cp /opt/ai-orchestrator/ai-orchestrator.service /etc/systemd/system/
-sudo systemctl daemon-reload
-```
-
-**Шаг 7 — Запустить сервис**
-
-```bash
-sudo systemctl start ai-orchestrator
-sudo systemctl status ai-orchestrator  # проверить, что работает
-```
-
-**Шаг 8 — Проверить логи**
-
-```bash
-journalctl -u ai-orchestrator -n 20 --no-pager
+# 5. Перезапуск
+sudo systemctl restart ai-orchestrator
+sudo systemctl status ai-orchestrator
 ```
 
 ---
 
-## Быстрый скрипт обновления (одной командой)
+## 4. Автоматизация обновления (скрипт deploy.sh)
 
-Сохранить на сервере как `/usr/local/bin/update-ai-orchestrator.sh`:
+Для ускорения можно создать скрипт `/opt/ai-orchestrator/deploy.sh`:
 
 ```bash
 #!/bin/bash
 set -e
 
-echo "=== Updating AI Orchestrator ==="
-sudo systemctl stop ai-orchestrator
+TMP_DIR=$(mktemp -d)
+git clone git@github.com:infernogood/ZA-LoopMattermost.git "$TMP_DIR"
 
 cd /opt/ai-orchestrator
-sudo -u ai-orchestrator git pull origin master
 
-if git diff HEAD@{1} --name-only | grep -q requirements.txt; then
-    echo "Requirements changed — reinstalling dependencies..."
-    sudo -u ai-orchestrator ./venv/bin/pip install --no-cache-dir -r requirements.txt
-fi
+sudo cp "$TMP_DIR/main.py" .
+sudo cp "$TMP_DIR/graph.py" .
+sudo cp "$TMP_DIR/projects.py" .
+sudo cp "$TMP_DIR/requirements.txt" .
+sudo cp -r "$TMP_DIR/default-prompts" .
 
-if git diff HEAD@{1} --name-only | grep -q ai-orchestrator.service; then
-    echo "Service file changed — reloading systemd..."
-    sudo cp ai-orchestrator.service /etc/systemd/system/
-    sudo systemctl daemon-reload
-fi
+rm -rf "$TMP_DIR"
 
-sudo systemctl start ai-orchestrator
-echo "=== Update complete ==="
-sudo systemctl status ai-orchestrator --no-pager -l
+sudo ./venv/bin/pip install --no-cache-dir -r requirements.txt
+sudo systemctl restart ai-orchestrator
+sudo systemctl status ai-orchestrator --no-pager
 ```
 
-Запуск:
-
 ```bash
-sudo chmod +x /usr/local/bin/update-ai-orchestrator.sh
-sudo /usr/local/bin/update-ai-orchestrator.sh
+sudo chmod +x /opt/ai-orchestrator/deploy.sh
+sudo ./opt/ai-orchestrator/deploy.sh
 ```
 
 ---
 
-## Важные замечания
+## Важно
 
-| Компонент | Где хранится | Попадает в GitHub? |
-|-----------|-------------|-------------------|
-| Исходный код | `/opt/ai-orchestrator/` | ✅ все `.py`, `.md`, `.txt` |
-| `.env` | `/opt/ai-orchestrator/.env` | ❌ (секреты) |
-| `venv/` | `/opt/ai-orchestrator/venv/` | ❌ (тяжёлый, пересоздаётся) |
-| `__pycache__/` | в папках проекта | ❌ (в .gitignore) |
-| Логи | `journalctl` | ❌ |
-| Рабочие проекты | `/var/lib/ai-workspace/projects/` | ❌ (данные пользователей) |
-| systemd unit | `/etc/systemd/system/ai-orchestrator.service` | ❌ (копируется руками) |
-| default-prompts | `/opt/ai-orchestrator/default-prompts/` | ✅ |
+| Файл | В git? | На сервере | Комментарий |
+|------|--------|------------|-------------|
+| `.env` | ❌ .gitignore | `/opt/ai-orchestrator/.env` | Секреты — не коммитить |
+| `venv/` | ❌ .gitignore | `/opt/ai-orchestrator/venv/` | Создаётся при установке |
+| `/var/lib/ai-workspace/` | ❌ | `/var/lib/ai-workspace/` | Данные проектов — бэкапить отдельно |
+| `default-prompts/` | ✅ | Копируется | Можно кастомизировать на сервере, но при обновлении затрётся |

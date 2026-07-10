@@ -24,3 +24,7 @@ Thumbs.db
 
 # Project specific
 *.tmp
+
+# Workspace data (not part of repo)
+ai-workspace/
+
