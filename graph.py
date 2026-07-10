@@ -343,6 +343,8 @@ def stage_2_programmer(state: GraphState):
     matches = file_pattern.findall(content)
     if matches:
         for filepath, code in matches:
+            if not filepath.startswith("src/"):
+                filepath = f"src/{filepath}"
             write_project_file(state["project_name"], filepath, code)
             post_agent_message(state, "programmer",
                                f"**Создан файл:** `{filepath}` ({len(code)} chars)")
@@ -350,13 +352,39 @@ def stage_2_programmer(state: GraphState):
                        f"Iteration {iteration}: generated {len(matches)} files:\n" +
                        "\n".join(f"  - {fp}" for fp, _ in matches))
     else:
-        append_to_log(state["project_name"], "context.md",
-                       f"Iteration {iteration}: no file markers found, saving as raw output")
+        fallback_pattern = re.compile(r"```\w*\n(.*?)```", re.DOTALL)
+        fallback_matches = fallback_pattern.findall(content)
+        if fallback_matches:
+            for idx, code in enumerate(fallback_matches):
+                code = code.strip()
+                if not code:
+                    continue
+                if code.startswith("#") or code.startswith("import ") or code.startswith("from "):
+                    ext = ".py"
+                elif code.startswith("{") or code.startswith("["):
+                    ext = ".json"
+                elif code.startswith("<"):
+                    ext = ".html"
+                elif "def " in code or "class " in code or "async def " in code:
+                    ext = ".py"
+                else:
+                    ext = ".txt"
+                filepath = f"src/generated_{idx}{ext}"
+                write_project_file(state["project_name"], filepath, code)
+                post_agent_message(state, "programmer",
+                                   f"**Создан файл:** `{filepath}` ({len(code)} chars)")
+            append_to_log(state["project_name"], "context.md",
+                           f"Iteration {iteration}: {len(fallback_matches)} code blocks found (no filepath markers, auto-named)")
+        else:
+            write_project_file(state["project_name"], "src/output.md", content)
+            append_to_log(state["project_name"], "context.md",
+                           f"Iteration {iteration}: no code blocks found, saved as raw output")
 
     append_to_log(state["project_name"], "status.md", f"Stage 2 Complete (iteration {iteration})")
 
+    src_files = list_src_files(state["project_name"])
     post_agent_message(state, "programmer",
-                       f"**Код написан** (итерация {iteration}, {len(matches)} файлов).")
+                       f"**Код написан** (итерация {iteration}, {len(src_files)} файлов).")
     post_handoff(state, "programmer", "debugger",
                  f"Код готов к проверке (итерация {iteration}).")
     return {}
