@@ -268,51 +268,203 @@ DEFAULT_API_KEY=... MATTERMOST_BOT_TOKEN=... MATTERMOST_TEAM_NAME=ai-engineering
 
 ---
 
-## Использование
+## Руководство пользователя
+
+### Быстрый старт
+
+```
+# 1. Создать проект (однократно)
+/project create my-app
+
+# 2. Поставить задачу
+ai_lead Напиши парсер CSV на Python
+```
+
+После этого открой каналы `~ai-researcher`, `~ai-programmer`, `~ai-debugger`, `~ai-validator`, `~ai-reporter` — агенты будут писать туда по ходу работы.
+
+Когда пайплайн завершится, бот пришлёт `Pipeline Complete` в общий канал.
+
+---
+
+### Понятие проекта
+
+Проект — это изолированная рабочая директория, в которой хранятся все данные:
+
+- **plan.md** — все задачи, которые ставились (append-only)
+- **context.md** — контекст итераций (append-only)
+- **status.md** — логи статусов этапов (append-only)
+- **error.md** — логи ошибок (append-only)
+- **src/** — сгенерированный код
+- **prompts/** — кастомные промпты для конкретного проекта
+
+Без активного проекта задача через `ai_lead` не запустится (ответ `no_project`).
+
+---
 
 ### Управление проектами
 
-В канале `ai-engineering-factory` через slash-команду `/project`:
+Все команды вводятся в канале `#ai-engineering-factory`:
 
-```
-/project create my-app          # Создать новый проект
-/project select my-app          # Выбрать активный проект
-/project list                   # Список проектов
-```
+| Команда | Описание |
+|---------|----------|
+| `/project create <name>` | Создать новый проект и сразу сделать его активным |
+| `/project select <name>` | Переключиться на существующий проект |
+| `/project list` | Показать все проекты, активный помечен `← active` |
 
-Активный проект сохраняется для каждого `user_id`. Все последующие задачи
-через `ai_lead` выполняются в контексте активного проекта.
+Проект привязывается к `user_id` — у каждого пользователя может быть свой активный проект.
+
+---
 
 ### Запуск задачи
 
-Активировать проект (`/project select my-app`), затем в том же канале:
+1. Убедись, что проект активен: `/project list` (активный помечен `← active`)
+2. Если проект не выбран: `/project select <name>`
+3. Отправь задачу:
 
 ```
-ai_lead Напиши Python-скрипт для конвертации CSV в JSON с поддержкой вложенных ключей
+ai_lead <описание задачи>
 ```
 
-### Что происходит
+Примеры задач:
 
-1. **Outgoing Webhook** отправляет текст в FastAPI
-2. **FastAPI** определяет активный проект для `user_id` и запускает граф
-3. **Stage 1 (Researcher)** — анализирует задачу → пост в `#ai-researcher`
-4. **Stage 2 (Programmer)** — пишет код → пост в `#ai-programmer`, файлы в `src/`
-5. **Stage 3 (Debugger)** — проверяет код → пост в `#ai-debugger`
-   - Если ошибки: возврат на Stage 2 (до 3 итераций)
-   - Если чисто: передача валидатору
-6. **Stage 4 (Validator)** — сверяет с планом → пост в `#ai-validator`
-7. **Stage 5 (Reporter)** — финальный отчёт → пост в `#ai-reporter` + список файлов
+```
+ai_lead Напиши CLI-утилиту для конвертации JSON в YAML с поддержкой вложенных структур
+ai_lead Добавь в main.py обработку аргументов через argparse
+ai_lead Исправь баг: при пустом файле программа падает с IndexError
+```
+
+---
+
+### Что происходит после ai_lead
+
+1. **FastAPI** проверяет наличие активного проекта
+2. Создаётся workspace проекта (если ещё не создан)
+3. Задача дописывается в `plan.md`
+4. Запускается пайплайн из 5 этапов:
+
+| Этап | Агент | Канал | Результат |
+|------|-------|-------|-----------|
+| 1 | Researcher | `#ai-researcher` | Анализ задачи, план |
+| 2 | Programmer | `#ai-programmer` | Генерация/исправление кода в `src/` |
+| 3 | Debugger | `#ai-debugger` | Проверка кода, JSON-отчёт об ошибках |
+| 4 | Validator | `#ai-validator` | Сверка кода с планом |
+| 5 | Reporter | `#ai-reporter` | Финальный отчёт со списком файлов |
+
+5. После завершения — `Pipeline Complete` в общий канал
+
+Если Debugger находит ошибки, Programmer запускается снова (до 3 итераций).
+Решение о возврате публикуется в `#ai-control`.
+
+---
 
 ### Наблюдение за агентами
 
-Пользователь может открыть параллельно каналы:
+Открой каналы параллельно, чтобы видеть процесс в реальном времени:
 
-- `#ai-researcher` — аналитика и план
-- `#ai-programmer` — код и исправления
-- `#ai-debugger` — результаты отладки
-- `#ai-validator` — финальная проверка
-- `#ai-reporter` — итоговый отчёт
-- `#ai-control` — системные решения (loop, guardrail)
+- **`#ai-researcher`** — как агент понял задачу, какие технологии выбрал
+- **`#ai-programmer`** — какие файлы созданы/изменены, размер кода
+- **`#ai-debugger`** — найденные ошибки или "код чист"
+- **`#ai-validator`** — прошёл ли код проверку
+- **`#ai-reporter`** — итоговый отчёт
+- **`#ai-control`** — системные сообщения: loop, guardrail
+
+Каналы можно свернуть/развернуть по необходимости.
+
+---
+
+### Кастомные промпты
+
+Для каждого проекта можно переопределить системный промпт любого агента.
+
+Создай файл в директории проекта на сервере:
+
+```
+/var/lib/ai-workspace/projects/<project>/prompts/<agent>-prompt.md
+```
+
+Например, `programmer-prompt.md`:
+
+```markdown
+Ты — senior Python-разработчик. Пиши код в стиле FastAPI.
+Всегда добавляй type hints. Используй pydantic для валидации.
+Формат вывода: ```filepath:src/<filename>
+<code>
+```
+```
+
+Доступные агенты: `researcher`, `programmer`, `debugger`, `validator`.
+
+Порядок загрузки промпта:
+1. `projects/<project>/prompts/<agent>-prompt.md` — per-project
+2. `/opt/ai-orchestrator/default-prompts/<agent>-prompt.md` — глобальный
+3. Встроенный fallback в коде
+
+---
+
+### Per-agent LLM
+
+Каждый агент может использовать свою модель, провайдер и температуру.
+Настройка в `.env` на сервере:
+
+```ini
+# Programmer — своя модель
+PROGRAMMER_MODEL=glm-5.2
+PROGRAMMER_PROVIDER=zai
+PROGRAMMER_API_KEY=
+PROGRAMMER_TEMPERATURE=0.0
+
+# Researcher — более креативный
+RESEARCHER_TEMPERATURE=0.3
+```
+
+Если пер-агентная переменная не задана, используется `DEFAULT_MODEL`, `DEFAULT_PROVIDER`, `DEFAULT_API_KEY`.
+
+---
+
+### Типичный сценарий
+
+```
+# 1. Создать проект под идею
+/project create csv-tools
+
+# 2. Поставить первую задачу
+ai_lead Напиши конвертер CSV → JSON с поддержкой вложенных ключей
+
+# 3. (наблюдаешь в каналах агентов)
+# 4. Получаешь Pipeline Complete
+# 5. Проверяешь src/main.py
+
+# 6. Ставишь следующую задачу в тот же проект
+ai_lead Добавь поддержку аргумента --indent для форматирования JSON
+
+# 7. (агенты продолжают в том же workspace)
+```
+
+---
+
+### Список файлов
+
+Посмотреть сгенерированные файлы на сервере:
+
+```bash
+ls -la /var/lib/ai-workspace/projects/<name>/src/
+cat /var/lib/ai-workspace/projects/<name>/status.md   # лог этапов
+cat /var/lib/ai-workspace/projects/<name>/error.md     # лог ошибок
+cat /var/lib/ai-workspace/projects/<name>/plan.md      # все задачи
+```
+
+---
+
+### Troubleshooting
+
+| Симптом | Причина | Решение |
+|---------|---------|---------|
+| `ai_lead` молча не реагирует | Нет активного проекта | `/project select <name>` |
+| "Канал ai-researcher не найден" | Бот не добавлен в канал | `/invite @ai-orchestrator` |
+| `plan.md` пуст | Не передан текст задачи | `ai_lead <текст>` |
+| "LLM call timed out" | Модель отвечает >180с | Увеличить `LLM_CALL_TIMEOUT` |
+| "Stage X FAILED" | Ошибка в этапе | `journalctl -u ai-orchestrator -f` |
+| Нейронки не пишут в каналы | API ключ неверный | Проверить `DEFAULT_API_KEY` в `.env` |
 
 ---
 
@@ -450,17 +602,4 @@ pydantic>=2.0.0        # Валидация данных
 python-dotenv>=1.0.0   # Загрузка .env
 ```
 
----
 
-## Troubleshooting
-
-**"Канал ai-researcher не найден"** — бот не добавлен в канал или handle не совпадает.
-→ `/invite @ai-orchestrator` в каждом канале.
-
-**"plan.md пуст"** — webhook не передал текст или `initial_task` пустой.
-→ Проверить формат сообщения: `ai_lead <текст задачи>`.
-
-**"LLM call timed out"** — Z.AI отвещает дольше 180 секунд.
-→ Увеличить `LLM_CALL_TIMEOUT` в `.env`.
-
-**"Stage X FAILED"** — смотреть `journalctl -u ai-orchestrator -f`.
