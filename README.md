@@ -604,6 +604,7 @@ langchain-core>=0.1.0  # Базовые абстракции LangChain
 requests>=2.31.0       # HTTP-клиент для Mattermost REST API
 pydantic>=2.0.0        # Валидация данных
 python-dotenv>=1.0.0   # Загрузка .env
+python-multipart>=0.0.9 # Парсинг form-data (slash-команды)
 ```
 
 
