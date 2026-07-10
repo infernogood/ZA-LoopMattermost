@@ -89,23 +89,38 @@
 
 ```
 /opt/ai-orchestrator/
-├── main.py                    # FastAPI — вебхук Mattermost
+├── main.py                    # FastAPI — вебхук + slash-команды
 ├── graph.py                   # LangGraph — 5 агентов + роутер
+├── projects.py                # CRUD проектов + файловый I/O
 ├── requirements.txt           # Python-зависимости
 ├── .env                       # (создаётся из .env.example)
 ├── .env.example               # Шаблон конфигурации
 ├── .gitignore
-├── ai-orchestrator.service    # systemd unit (копируется в /etc/systemd/system/)
+├── ai-orchestrator.service    # systemd unit
+├── GIT_WORKFLOW.md            # Инструкция по git push/pull
+├── default-prompts/           # Глобальные дефолтные промты агентов
+│   ├── researcher-prompt.md
+│   ├── programmer-prompt.md
+│   ├── debugger-prompt.md
+│   └── validator-prompt.md
 └── venv/                      # Виртуальное окружение Python
 
-/var/lib/ai-workspace/         # Рабочие директории тредов
-├── thread_{post_id_1}/
-│   ├── plan.md                # Исходная задача пользователя
-│   ├── context.md             # Сгенерированный код
-│   ├── error.md               # Логи ошибок (при цикле отладки)
-│   └── status.md              # Текущий статус этапа
-└── thread_{post_id_2}/
-    └── ...
+/var/lib/ai-workspace/
+└── projects/
+    ├── .active                # JSON: {user_id: active_project}
+    ├── my-app/
+    │   ├── meta.json          # Метаданные проекта
+    │   ├── plan.md            # Append-only: все задачи
+    │   ├── context.md         # Append-only: контекст итераций
+    │   ├── status.md          # Append-only: статусы этапов
+    │   ├── error.md           # Append-only: ошибки
+    │   ├── src/               # Сгенерированный код
+    │   │   ├── main.py
+    │   │   └── errors.md
+    │   └── prompts/           # Проект-специфичные промты
+    │       └── programmer-prompt.md
+    └── another-project/
+        └── ...
 ```
 
 ---
@@ -122,16 +137,20 @@
 
 ## Установка
 
-### 1. Клонирование и подготовка окружения
+### 1. Клонирование репозитория
 
 ```bash
-sudo mkdir -p /opt/ai-orchestrator
-sudo chown -R $USER:$USER /opt/ai-orchestrator
+# 1. Настроить SSH-ключ в GitHub:
+#    - Скопировать публичный ключ с сервера: cat ~/.ssh/id_ed25519.pub
+#    - Добавить в github.com/settings/keys (Authentication Key)
+#    - Проверить: ssh -T git@github.com  → "Hi infernogood! You've successfully authenticated"
 
-# Копировать файлы проекта в /opt/ai-orchestrator/
-cp -r * /opt/ai-orchestrator/
-cd /opt/ai-orchestrator
+# 2. Клонировать репозиторий
+cd /opt
+git clone git@github.com:infernogood/ZA-LoopMattermost.git ai-orchestrator
+cd ai-orchestrator
 
+# 3. Виртуальное окружение и зависимости
 python3 -m venv venv
 source venv/bin/activate
 pip install --no-cache-dir -r requirements.txt
@@ -140,29 +159,38 @@ pip install --no-cache-dir -r requirements.txt
 ### 2. Файловая система
 
 ```bash
-sudo mkdir -p /var/lib/ai-workspace
-sudo chown $USER:$USER /var/lib/ai-workspace
+sudo mkdir -p /var/lib/ai-workspace/projects
+sudo chown -R $USER:$USER /var/lib/ai-workspace
 sudo chmod 750 /var/lib/ai-workspace
 ```
 
-Опционально — tmpfs для скорости (актуально при частых запросах):
-
-```bash
-# Добавить в /etc/fstab:
-tmpfs /var/lib/ai-workspace tmpfs defaults,noatime,size=512M,mode=0750 0 0
-
-sudo mount /var/lib/ai-workspace
-```
-
-### 3. Конфигурация
+### 3. Конфигурация (.env)
 
 ```bash
 cp .env.example .env
-# Отредактировать .env:
-#   ZAI_API_KEY=...
-#   MATTERMOST_BOT_TOKEN=...
-#   MATTERMOST_TEAM_NAME=...
+nano .env
 ```
+
+Обязательные переменные:
+
+| Переменная | Значение |
+|-----------|----------|
+| `DEFAULT_API_KEY` | Ключ Z.AI (fallback для всех агентов) |
+| `MATTERMOST_BOT_TOKEN` | Токен бота Mattermost |
+| `MATTERMOST_TEAM_NAME` | `ai-engineering-factory` |
+
+Опционально — пер-агентные LLM (переопределяют DEFAULT):
+
+```
+PROGRAMMER_MODEL=glm-5.2
+PROGRAMMER_PROVIDER=zai
+PROGRAMMER_API_KEY=
+PROGRAMMER_TEMPERATURE=0.0
+```
+
+Доступные префиксы: `RESEARCHER_`, `PROGRAMMER_`, `DEBUGGER_`, `VALIDATOR_`, `REPORTER_`.
+
+Поддерживаемые провайдеры: `zai`, `openai`, `anthropic`.
 
 ### 4. Настройка Mattermost
 
@@ -191,7 +219,18 @@ cp .env.example .env
 
 Добавить бота `ai-orchestrator` во все каналы с ролью Member.
 
-#### 4c. Настроить Outgoing Webhook (запуск пайплайна)
+#### 4c. Настроить Slash Command (управление проектами)
+
+1. **Integrations → Slash Commands → Add Slash Command**
+   - Title: `AI Project`
+   - Command Trigger Word: `/project`
+   - Callback URLs: `http://172.17.0.1:8000/slash`
+   - Request Method: `POST`
+   - Autocomplete: ✓
+
+Доступные команды: `/project create <name>`, `/project select <name>`, `/project list`.
+
+#### 4d. Настроить Outgoing Webhook (запуск пайплайна)
 
 1. **Integrations → Outgoing Webhooks → Add Outgoing Webhook**
    - Title: `AI Engineering Trigger`
@@ -223,7 +262,7 @@ journalctl -u ai-orchestrator -f
 ```bash
 cd /opt/ai-orchestrator
 source venv/bin/activate
-ZAI_API_KEY=... MATTERMOST_BOT_TOKEN=... MATTERMOST_TEAM_NAME=ai-engineering-factory \
+DEFAULT_API_KEY=... MATTERMOST_BOT_TOKEN=... MATTERMOST_TEAM_NAME=ai-engineering-factory \
   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -231,9 +270,22 @@ ZAI_API_KEY=... MATTERMOST_BOT_TOKEN=... MATTERMOST_TEAM_NAME=ai-engineering-fac
 
 ## Использование
 
+### Управление проектами
+
+В канале `ai-engineering-factory` через slash-команду `/project`:
+
+```
+/project create my-app          # Создать новый проект
+/project select my-app          # Выбрать активный проект
+/project list                   # Список проектов
+```
+
+Активный проект сохраняется для каждого `user_id`. Все последующие задачи
+через `ai_lead` выполняются в контексте активного проекта.
+
 ### Запуск задачи
 
-В канале `ai-engineering-factory` отправить сообщение, начинающееся с `ai_lead`:
+Активировать проект (`/project select my-app`), затем в том же канале:
 
 ```
 ai_lead Напиши Python-скрипт для конвертации CSV в JSON с поддержкой вложенных ключей
@@ -242,14 +294,14 @@ ai_lead Напиши Python-скрипт для конвертации CSV в JS
 ### Что происходит
 
 1. **Outgoing Webhook** отправляет текст в FastAPI
-2. **FastAPI** создаёт workspace `thread_{post_id}` и запускает граф
+2. **FastAPI** определяет активный проект для `user_id` и запускает граф
 3. **Stage 1 (Researcher)** — анализирует задачу → пост в `#ai-researcher`
-4. **Stage 2 (Programmer)** — пишет код → пост в `#ai-programmer`
+4. **Stage 2 (Programmer)** — пишет код → пост в `#ai-programmer`, файлы в `src/`
 5. **Stage 3 (Debugger)** — проверяет код → пост в `#ai-debugger`
    - Если ошибки: возврат на Stage 2 (до 3 итераций)
    - Если чисто: передача валидатору
 6. **Stage 4 (Validator)** — сверяет с планом → пост в `#ai-validator`
-7. **Stage 5 (Reporter)** — финальный отчёт → пост в `#ai-reporter` + результат в исходный тред
+7. **Stage 5 (Reporter)** — финальный отчёт → пост в `#ai-reporter` + список файлов
 
 ### Наблюдение за агентами
 
@@ -287,26 +339,54 @@ stage_3_debugger
 
 ## Агенты и их промпты
 
-| Stage | Агент | Модель | Temperature | Что делает |
-|-------|-------|--------|-------------|------------|
-| 1 | Researcher | glm-5.2 | 0.3 | Анализирует задачу, составляет план |
-| 2 | Programmer | glm-5.2 | 0.0 | Пишет/исправляет код |
-| 3 | Debugger | glm-5.2 (with_structured_output) | 0.0 | Проверяет на ошибки, возвращает JSON |
-| 4 | Validator | glm-5.2 | 0.0 | Сверяет с планом (не перезаписывает код!) |
-| 5 | Reporter | — | — | Формирует финальный отчёт |
+### Системные промпты (порядок загрузки)
+
+1. `projects/{name}/prompts/{agent}-prompt.md` — per-project override
+2. `default-prompts/{agent}-prompt.md` — глобальные дефолты
+3. Встроенный fallback (хардкод в `_create_default_prompt()`)
+
+### Per-agent LLM
+
+Каждый агент использует свою модель/провайдер/температуру (задаётся в `.env`).
+Если пер-агентная переменная не задана — используется `DEFAULT_*`.
+
+| Stage | Агент | Переменная префикс | Temperature | Что делает |
+|-------|-------|-------------------|-------------|------------|
+| 1 | Researcher | `RESEARCHER_` | 0.3 | Анализирует задачу, составляет план |
+| 2 | Programmer | `PROGRAMMER_` | 0.0 | Пишет/исправляет код |
+| 3 | Debugger | `DEBUGGER_` | 0.0 | Проверяет на ошибки, возвращает JSON |
+| 4 | Validator | `VALIDATOR_` | 0.0 | Сверяет с планом (не перезаписывает код!) |
+| 5 | Reporter | `REPORTER_` | — | Формирует финальный отчёт |
 
 ---
 
 ## Конфигурация (.env)
 
+### Default (fallback)
+
 | Переменная | Обязательная | По умолчанию | Описание |
 |-----------|-------------|-------------|----------|
-| `ZAI_API_KEY` | Да | — | API ключ Z.AI |
+| `DEFAULT_MODEL` | Да | `glm-5.2` | Модель LLM по умолчанию |
+| `DEFAULT_PROVIDER` | Да | `zai` | Провайдер (`zai`, `openai`, `anthropic`) |
+| `DEFAULT_API_KEY` | Да | — | API ключ |
 | `MATTERMOST_BOT_TOKEN` | Да | — | Токен бота Mattermost |
 | `MATTERMOST_TEAM_NAME` | Да | `ai-engineering-factory` | Название команды Mattermost |
 | `MATTERMOST_URL` | Нет | `http://127.0.0.1:8065` | Базовый URL Mattermost |
-| `ZAI_BASE_URL` | Нет | `https://api.z.ai/api/coding/paas/v4` | Эндпоинт Z.AI Coding |
 | `LLM_CALL_TIMEOUT` | Нет | `180` | Таймаут LLM-вызова (сек) |
+
+### Per-agent override (опционально)
+
+Любой из префиксов `RESEARCHER_`, `PROGRAMMER_`, `DEBUGGER_`, `VALIDATOR_`, `REPORTER_`
+можно комбинировать с суффиксами `_MODEL`, `_PROVIDER`, `_API_KEY`, `_TEMPERATURE`.
+
+Пример — для Programmer своя модель и температура:
+
+```
+PROGRAMMER_MODEL=glm-5.2
+PROGRAMMER_PROVIDER=zai
+PROGRAMMER_API_KEY=
+PROGRAMMER_TEMPERATURE=0.0
+```
 
 ---
 
