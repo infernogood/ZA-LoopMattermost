@@ -1,29 +1,32 @@
-.env
-.venv/
-venv/
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+*.py[cod]
 *.egg-info/
-.installed.cfg
-*.egg
-*.log
-.pytest_cache/
-.mypy_cache/
-.coverage
-htmlcov/
+dist/
+build/
+*.so
+*.dylib
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment (API keys) — ДЕФОЛТНЫЕ ПРОМТЫ ВКЛЮЧЁН
+.env
+prompts/
+*.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# Project specific
+*.tmp
+Thread_*
