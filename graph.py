@@ -10,7 +10,7 @@ import concurrent.futures
 import requests
 from typing import TypedDict
 from pydantic import BaseModel, Field
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from projects import (
@@ -514,16 +514,16 @@ workflow.add_node("stage_3_debugger", lambda s: _safe_stage(s, "3", stage_3_debu
 workflow.add_node("stage_4_validator", lambda s: _safe_stage(s, "4", stage_4_validator))
 workflow.add_node("stage_5_final", lambda s: _safe_stage(s, "5", stage_5_final))
 
+workflow.add_edge(START, "stage_1_researcher")
 workflow.add_edge("stage_1_researcher", "stage_2_programmer")
 workflow.add_edge("stage_2_programmer", "stage_3_debugger")
+workflow.add_edge("stage_4_validator", "stage_5_final")
+workflow.add_edge("stage_5_final", END)
 
 workflow.add_conditional_edges(
     "stage_3_debugger", route_after_debug,
     {"stage_2_programmer": "stage_2_programmer", "stage_4_validator": "stage_4_validator"}
 )
-
-workflow.add_edge("stage_4_validator", "stage_5_final")
-workflow.add_edge("stage_5_final", END)
 
 workflow_compiled = workflow.compile()
 
