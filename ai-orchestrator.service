@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ai-orchestrator
-Group=ai-orchestrator
+User=root
+Group=root
 
 WorkingDirectory=/opt/ai-orchestrator
 EnvironmentFile=/opt/ai-orchestrator/.env

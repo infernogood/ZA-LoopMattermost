@@ -230,6 +230,8 @@ PROGRAMMER_TEMPERATURE=0.0
 
 Доступные команды: `/project create <name>`, `/project select <name>`, `/project list`.
 
+> **Request URL:** используй тот же IP, что и для вебхука (см. примечание ниже).
+
 #### 4d. Настроить Outgoing Webhook (запуск пайплайна)
 
 1. **Integrations → Outgoing Webhooks → Add Outgoing Webhook**
@@ -240,9 +242,11 @@ PROGRAMMER_TEMPERATURE=0.0
    - Callback URLs: `http://172.17.0.1:8000/webhook`
    - Content Type: `application/json`
 
-> **Почему `172.17.0.1`?** — это IP интерфейса docker0 bridge.
-> Mattermost работает в Docker и обращается к API-шлюзу хоста через этот IP.
-> Если Mattermost НЕ в Docker (работает напрямую на хосте), используйте `http://127.0.0.1:8000/webhook`.
+> **Какой URL использовать?** — это зависит от Docker-сети Mattermost.
+> Проверь: `docker network inspect docker_default | grep Gateway` (обычно `172.18.0.1`).
+> Для сети `docker_default` используй `http://172.18.0.1:8000/webhook`.
+> Для сети `docker0` используй `http://172.17.0.1:8000/webhook`.
+> Если Mattermost НЕ в Docker (работает напрямую на хосте): `http://127.0.0.1:8000/webhook`.
 
 ### 5. Запуск через systemd
 
@@ -580,7 +584,7 @@ PROGRAMMER_TEMPERATURE=0.0
 journalctl -u ai-orchestrator -f --output=json
 
 # Проверка здоровья
-curl http://172.17.0.1:8000/webhook -X POST -H "Content-Type: application/json" \
+curl http://127.0.0.1:8000/webhook -X POST -H "Content-Type: application/json" \
   -d '{"channel_id":"test","post_id":"test","text":"health check","user_name":"test"}'
 
 # Redis очередь (если используется RQ)

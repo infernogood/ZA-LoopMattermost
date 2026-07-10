@@ -57,7 +57,7 @@ def _resolve_channel_id(channel_name: str) -> str | None:
     if not bot_token:
         return None
     try:
-        url = f"{MATTERMOST_URL}/api/v4/channels/name/{MATTERMOST_TEAM_NAME}/{channel_name}"
+        url = f"{MATTERMOST_URL}/api/v4/teams/name/{MATTERMOST_TEAM_NAME}/channels/name/{channel_name}"
         resp = requests.get(url, headers={"Authorization": f"Bearer {bot_token}"}, timeout=10)
         resp.raise_for_status()
         cid = resp.json().get("id")
@@ -137,8 +137,9 @@ def notify_mm(state: GraphState, message: str):
     payload = {
         "channel_id": state["channel_id"],
         "message": _truncate_message(message),
-        "root_id": state["root_id"]
     }
+    if state.get("root_id"):
+        payload["root_id"] = state["root_id"]
     last_exc = None
     for attempt in range(3):
         try:
@@ -201,7 +202,7 @@ def _create_llm(agent_key: str):
 # ThreadPoolExecutor + timeout
 # ==========================================
 _llm_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="llm")
-LLM_CALL_TIMEOUT = 180
+LLM_CALL_TIMEOUT = int(os.environ.get("LLM_CALL_TIMEOUT", "300"))
 
 
 def llm_invoke(agent_key: str, messages: list, timeout: int = LLM_CALL_TIMEOUT):
@@ -220,16 +221,24 @@ class DebugResult(BaseModel):
     error_description: str = Field(description="Error details")
 
 
-def llm_invoke_structured(messages: list, timeout: int = LLM_CALL_TIMEOUT):
-    llm = _create_llm("debugger")
-    structured = llm.with_structured_output(DebugResult)
-    future = _llm_executor.submit(structured.invoke, messages)
-    try:
-        return future.result(timeout=timeout)
-    except concurrent.futures.TimeoutError:
-        raise TimeoutError(f"LLM structured call timed out after {timeout}s")
-    except Exception as e:
-        raise RuntimeError(f"LLM structured call failed: {type(e).__name__}: {e}") from e
+def _parse_debug_result(response_text: str) -> DebugResult:
+    import json as json_lib
+    text = response_text.strip()
+    json_match = re.search(r'\{[^{}]*"has_errors"[^{}]*\}', text, re.DOTALL)
+    if json_match:
+        try:
+            parsed = json_lib.loads(json_match.group())
+            return DebugResult(
+                has_errors=bool(parsed.get("has_errors", False)),
+                error_description=parsed.get("error_description", "")
+            )
+        except (json_lib.JSONDecodeError, Exception):
+            pass
+    has_err = any(word in text.lower() for word in ["ошибк", "error", "bug", "неправильн", "некоррект"])
+    return DebugResult(
+        has_errors=has_err,
+        error_description=text[:500] if has_err else ""
+    )
 
 
 # ==========================================
@@ -379,7 +388,8 @@ def stage_3_debugger(state: GraphState):
         HumanMessage(content=f"План:\n{plan}\n\nФайлы проекта:{code_context}")
     ]
 
-    result = llm_invoke_structured(messages)
+    response = llm_invoke("debugger", messages)
+    result = _parse_debug_result(response.content or "")
 
     if result.has_errors and not result.error_description.strip():
         result.error_description = "Errors found (no details)"
