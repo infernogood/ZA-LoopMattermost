@@ -525,6 +525,7 @@ stage_3_debugger
 | `DEFAULT_MODEL` | Да | `glm-5.2` | Модель LLM по умолчанию |
 | `DEFAULT_PROVIDER` | Да | `zai` | Провайдер (`zai`, `openai`, `anthropic`) |
 | `DEFAULT_API_KEY` | Да | — | API ключ |
+| `DEFAULT_BASE_URL` | Нет | — | Кастомный endpoint (для OpenAI-совместимых провайдеров) |
 | `MATTERMOST_BOT_TOKEN` | Да | — | Токен бота Mattermost |
 | `MATTERMOST_TEAM_NAME` | Да | `ai-engineering-factory` | Название команды Mattermost |
 | `MATTERMOST_URL` | Нет | `http://127.0.0.1:8065` | Базовый URL Mattermost |

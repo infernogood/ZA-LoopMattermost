@@ -182,7 +182,9 @@ def _create_llm(agent_key: str):
     model = os.environ.get(f"{upper}_MODEL") or os.environ.get("DEFAULT_MODEL", "glm-5.2")
     provider = os.environ.get(f"{upper}_PROVIDER") or os.environ.get("DEFAULT_PROVIDER", "zai")
     api_key = os.environ.get(f"{upper}_API_KEY") or os.environ.get("DEFAULT_API_KEY") or os.environ.get("ZAI_API_KEY", "")
-    base_url = os.environ.get(f"{upper}_BASE_URL") or PROVIDER_BASE_URLS.get(provider, PROVIDER_BASE_URLS["zai"])
+    base_url = (os.environ.get(f"{upper}_BASE_URL")
+                or os.environ.get("DEFAULT_BASE_URL")
+                or PROVIDER_BASE_URLS.get(provider, PROVIDER_BASE_URLS["zai"]))
     temperature = float(os.environ.get(f"{upper}_TEMPERATURE") or 0.0)
 
     if not api_key:
